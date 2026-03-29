@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 /**
- * Hermes Skill Installer MCP Server (Node.js with @modelcontextprotocol/sdk)
+ * Hermes Skills MCP Server
+ * 
+ * Full wrapper around `hermes skills` CLI commands.
+ * Provides tools: install, search, list, info, remove
  * 
  * Install with:
  *   npx -y poogas/hermes-skill-installer
  * 
  * Or add to Hermes:
- *   hermes mcp add skill-installer --command=npx --args="-y poogas/hermes-skill-installer"
+ *   hermes mcp add skills --command=npx --args="-y poogas/hermes-skill-installer"
  */
 
 const { Server } = require('@modelcontextprotocol/sdk/server/index.js');
@@ -18,13 +21,13 @@ const os = require('os');
 const TOOLS = [
   {
     name: "skill_install",
-    description: "Install a Hermes skill from GitHub repository. Usage: owner/repo/path format, e.g. 'poogas/hermes-skill-installer/hermes-skill-installer'",
+    description: "Install a Hermes skill from GitHub repository or Skills Hub",
     inputSchema: {
       type: "object",
       properties: {
         identifier: {
           type: "string",
-          description: "Skill identifier in format 'owner/repo/path' or just 'owner/repo' if SKILL.md is in repo root"
+          description: "Skill identifier: 'owner/repo/path' for GitHub, or 'owner/skill-name' for hub, e.g. 'fishaudio/fish-speech'"
         },
         force: {
           type: "boolean",
@@ -34,15 +37,82 @@ const TOOLS = [
       },
       required: ["identifier"]
     }
+  },
+  {
+    name: "skill_search",
+    description: "Search for skills in Hermes Skills Hub (skills.sh)",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Search query to find skills in the hub"
+        },
+        limit: {
+          type: "number",
+          description: "Maximum number of results to return",
+          default: 10
+        }
+      },
+      required: ["query"]
+    }
+  },
+  {
+    name: "skill_list",
+    description: "List installed Hermes skills",
+    inputSchema: {
+      type: "object",
+      properties: {
+        source: {
+          type: "string",
+          enum: ["all", "local", "hub"],
+          description: "Source to list from: 'all' (default), 'local', or 'hub'",
+          default: "all"
+        }
+      }
+    }
+  },
+  {
+    name: "skill_info",
+    description: "Get detailed information about a specific skill",
+    inputSchema: {
+      type: "object",
+      properties: {
+        identifier: {
+          type: "string",
+          description: "Skill identifier: 'owner/repo/path' for GitHub, or skill name for local"
+        }
+      },
+      required: ["identifier"]
+    }
+  },
+  {
+    name: "skill_remove",
+    description: "Remove an installed Hermes skill",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Skill name to remove"
+        },
+        confirm: {
+          type: "boolean",
+          description: "Skip confirmation prompt",
+          default: false
+        }
+      },
+      required: ["name"]
+    }
   }
 ];
 
-class HermesSkillInstallerServer {
+class HermesSkillsServer {
   constructor() {
     this.server = new Server(
       {
-        name: "hermes-skill-installer",
-        version: "1.0.0"
+        name: "hermes-skills",
+        version: "1.1.0"
       },
       {
         capabilities: {
@@ -63,13 +133,22 @@ class HermesSkillInstallerServer {
       const { name, arguments: args } = request.params;
 
       try {
-        if (name === "skill_install") {
-          return await this.skillInstall(args);
-        } else {
-          return {
-            content: [{ type: "text", text: `Unknown tool: ${name}` }],
-            isError: true
-          };
+        switch (name) {
+          case "skill_install":
+            return await this.skillInstall(args);
+          case "skill_search":
+            return await this.skillSearch(args);
+          case "skill_list":
+            return await this.skillList(args);
+          case "skill_info":
+            return await this.skillInfo(args);
+          case "skill_remove":
+            return await this.skillRemove(args);
+          default:
+            return {
+              content: [{ type: "text", text: `Unknown tool: ${name}` }],
+              isError: true
+            };
         }
       } catch (error) {
         return {
@@ -80,11 +159,12 @@ class HermesSkillInstallerServer {
     });
   }
 
-  runCommand(cmd, args) {
+  runCommand(cmd, args, timeout = 120000) {
     return new Promise((resolve, reject) => {
       const proc = spawn(cmd, args, {
         cwd: os.homedir(),
-        stdio: ['ignore', 'pipe', 'pipe']
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env }
       });
 
       let stdout = '';
@@ -103,8 +183,8 @@ class HermesSkillInstallerServer {
 
       setTimeout(() => {
         proc.kill();
-        reject(new Error('Command timed out after 120 seconds'));
-      }, 120000);
+        reject(new Error('Command timed out'));
+      }, timeout);
     });
   }
 
@@ -148,12 +228,143 @@ class HermesSkillInstallerServer {
     }
   }
 
+  async skillSearch(args) {
+    const { query, limit = 10 } = args;
+
+    if (!query) {
+      return {
+        content: [{ type: "text", text: "Error: query is required" }],
+        isError: true
+      };
+    }
+
+    try {
+      const result = await this.runCommand('hermes', ['skills', 'search', query]);
+
+      if (result.code === 0) {
+        // Parse and limit results
+        const lines = (result.stdout || '').trim().split('\n').slice(0, limit);
+        return {
+          content: [{ type: "text", text: lines.join('\n') || "No results found" }]
+        };
+      } else {
+        return {
+          content: [{ type: "text", text: `Error:\n${result.stderr || result.stdout}` }],
+          isError: true
+        };
+      }
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: `Error: ${error.message}` }],
+        isError: true
+      };
+    }
+  }
+
+  async skillList(args) {
+    const { source = "all" } = args;
+
+    const cmdArgs = ["skills", "list"];
+    if (source === "hub") {
+      cmdArgs.push("--source");
+      cmdArgs.push("hub");
+    } else if (source === "local") {
+      cmdArgs.push("--source");
+      cmdArgs.push("local");
+    }
+
+    try {
+      const result = await this.runCommand('hermes', cmdArgs);
+
+      if (result.code === 0) {
+        return {
+          content: [{ type: "text", text: result.stdout || "No skills found" }]
+        };
+      } else {
+        return {
+          content: [{ type: "text", text: `Error:\n${result.stderr || result.stdout}` }],
+          isError: true
+        };
+      }
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: `Error: ${error.message}` }],
+        isError: true
+      };
+    }
+  }
+
+  async skillInfo(args) {
+    const { identifier } = args;
+
+    if (!identifier) {
+      return {
+        content: [{ type: "text", text: "Error: identifier is required" }],
+        isError: true
+      };
+    }
+
+    try {
+      const result = await this.runCommand('hermes', ['skills', 'info', identifier]);
+
+      if (result.code === 0) {
+        return {
+          content: [{ type: "text", text: result.stdout || "No info available" }]
+        };
+      } else {
+        return {
+          content: [{ type: "text", text: `Error:\n${result.stderr || result.stdout}` }],
+          isError: true
+        };
+      }
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: `Error: ${error.message}` }],
+        isError: true
+      };
+    }
+  }
+
+  async skillRemove(args) {
+    const { name, confirm = false } = args;
+
+    if (!name) {
+      return {
+        content: [{ type: "text", text: "Error: name is required" }],
+        isError: true
+      };
+    }
+
+    const cmdArgs = ["skills", "remove", name];
+    if (confirm) cmdArgs.push("--yes");
+
+    try {
+      const result = await this.runCommand('hermes', cmdArgs);
+
+      if (result.code === 0) {
+        return {
+          content: [{ type: "text", text: result.stdout || "Skill removed successfully!" }]
+        };
+      } else {
+        return {
+          content: [{ type: "text", text: `Error:\n${result.stderr || result.stdout}` }],
+          isError: true
+        };
+      }
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: `Error: ${error.message}` }],
+        isError: true
+      };
+    }
+  }
+
   async start() {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
-    console.error("Hermes Skill Installer MCP Server started");
+    console.error("Hermes Skills MCP Server started");
   }
 }
 
-const server = new HermesSkillInstallerServer();
+const server = new HermesSkillsServer();
 server.start().catch(console.error);

@@ -1,75 +1,100 @@
-# Hermes Skill Installer MCP Plugin
+# Hermes Skills MCP Server
 
-An MCP server plugin that allows Hermes Agent to install skills from GitHub directly.
+Full MCP wrapper around `hermes skills` CLI commands. Enables Hermes Agent to search, list, install, info, and remove skills — even from an isolated container.
 
-## What This Does
+## Why
 
-Normally, Hermes Agent (running in a container/Docker) cannot run `hermes skills install` on the host machine. This MCP server bridges that gap — Hermes can call the `skill_install` tool, and this server executes `hermes skills install` on the host.
+Hermes Agent runs in a container but `hermes` CLI lives on the host. This MCP server acts as a bridge — Hermes calls tools, this server executes `hermes skills ...` on the host.
 
 ## Installation
 
-### 1. Install MCP package (if not already installed)
-
-```bash
-pip install mcp
-```
-
-### 2. Add to Hermes config
+### Add to Hermes config
 
 Edit `~/.hermes/config.yaml`:
 
 ```yaml
 mcp_servers:
-  skill-installer:
-    command: python
-    args: ["/path/to/skill_installer_mcp.py"]
+  skills:
+    command: "npx"
+    args: ["-y", "poogas/hermes-skill-installer"]
 ```
 
-Replace `/path/to/` with the actual path where you placed this file.
+Then restart Hermes: `hermes gateway restart`
 
-### 3. Restart Hermes
-
-```bash
-hermes gateway restart
-```
+Or use the hot-reload command: `/reload_mcp`
 
 ## Available Tools
 
-Once installed, Hermes will have access to these tools:
+| Tool | Description |
+|------|-------------|
+| `skill_install` | Install a skill from GitHub or Skills Hub |
+| `skill_search` | Search skills in Hermes Skills Hub (skills.sh) |
+| `skill_list` | List installed skills (local, hub, or all) |
+| `skill_info` | Get detailed info about a specific skill |
+| `skill_remove` | Remove an installed skill |
 
-- **`skill_install`** — Install a skill from GitHub
-  - `identifier`: Format `owner/repo/path` (e.g., `poogas/hermes-skill-installer/hermes-skill-installer`)
-  - `force`: Reinstall if already installed (default: false)
+### skill_install
+```json
+{ "identifier": "fishaudio/fish-speech", "force": false }
+```
+- `identifier`: Format `owner/repo/path` for GitHub, or just `owner/skill-name` for hub
+- `force`: Skip confirmation and overwrite existing (default: false)
 
-- **`skill_list`** — List all installed skills
+### skill_search
+```json
+{ "query": "fish audio tts", "limit": 10 }
+```
+- `query`: Search terms
+- `limit`: Max results (default: 10)
 
-- **`skill_search`** — Search for skills in the Hermes Skills Hub
+### skill_list
+```json
+{ "source": "all" }
+```
+- `source`: "all", "local", or "hub" (default: all)
 
-## Usage
+### skill_info
+```json
+{ "identifier": "fishaudio/fish-speech" }
+```
 
-After installation, you can ask Tiese (or any Hermes instance with this plugin):
+### skill_remove
+```json
+{ "name": "fish-speech", "confirm": false }
+```
+- `confirm`: Skip prompt (default: false)
+
+## Example Usage
 
 ```
-Install the github-pr-workflow skill
-```
+Find me a fish audio skill
+→ skill_search("fish audio")
 
-And Hermes will use the `skill_install` tool to run:
-```bash
-hermes skills install poogas/hermes-skill-installer/github-pr-workflow
+Install it
+→ skill_install("fishaudio/fish-speech")
+
+List all my skills
+→ skill_list()
+
+Get info on a skill
+→ skill_info("fishaudio/fish-speech")
+
+Remove a skill
+→ skill_remove("old-skill")
 ```
 
 ## Repository Structure
 
 ```
 hermes-skill-installer/
-├── README.md              ← You are here
-├── skill_installer_mcp.py ← MCP server plugin
-└── hermes-skill-installer/
-    └── SKILL.md           ← Meta-skill (for reference)
+├── README.md
+├── hermes-skill-installer.js  ← Node.js MCP server
+├── package.json
+└── hermes-skill-installer/    ← SKILL.md meta
 ```
 
 ## Requirements
 
-- Python 3.9+
+- Node.js (for npx)
+- Hermes Agent on host
 - `mcp` package: `pip install mcp`
-- Hermes Agent installed on the host
