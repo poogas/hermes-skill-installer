@@ -2,16 +2,14 @@
   "name": "hermes-skill-installer",
   "version": "1.0.0",
   "description": "MCP server for installing Hermes skills from GitHub",
+  "main": "hermes-skill-installer.js",
   "bin": {
     "hermes-skill-installer": "./hermes-skill-installer.js"
   },
-  "engines": {
-    "node": ">=16"
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
   },
-  "keywords": ["hermes", "mcp", "skills"],
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/poogas/hermes-skill-installer"
+  "engines": {
+    "node": ">=18"
   }
 }
