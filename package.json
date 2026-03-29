@@ -1,6 +1,6 @@
 {
   "name": "hermes-skill-installer",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "MCP server for installing Hermes skills from GitHub",
   "main": "hermes-skill-installer.js",
   "bin": {
