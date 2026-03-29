@@ -34,28 +34,6 @@ const TOOLS = [
       },
       required: ["identifier"]
     }
-  },
-  {
-    name: "skill_list",
-    description: "List all installed Hermes skills",
-    inputSchema: {
-      type: "object",
-      properties: {}
-    }
-  },
-  {
-    name: "skill_search",
-    description: "Search for skills in Hermes Skills Hub",
-    inputSchema: {
-      type: "object",
-      properties: {
-        query: {
-          type: "string",
-          description: "Search query to find skills"
-        }
-      },
-      required: ["query"]
-    }
   }
 ];
 
@@ -87,10 +65,6 @@ class HermesSkillInstallerServer {
       try {
         if (name === "skill_install") {
           return await this.skillInstall(args);
-        } else if (name === "skill_list") {
-          return await this.skillList();
-        } else if (name === "skill_search") {
-          return await this.skillSearch(args);
         } else {
           return {
             content: [{ type: "text", text: `Unknown tool: ${name}` }],
@@ -167,43 +141,6 @@ class HermesSkillInstallerServer {
           isError: true
         };
       }
-      return {
-        content: [{ type: "text", text: `Error: ${error.message}` }],
-        isError: true
-      };
-    }
-  }
-
-  async skillList() {
-    try {
-      const result = await this.runCommand('hermes', ['skills', 'list']);
-      return {
-        content: [{ type: "text", text: result.stdout || result.stderr || "No skills found" }]
-      };
-    } catch (error) {
-      return {
-        content: [{ type: "text", text: `Error: ${error.message}` }],
-        isError: true
-      };
-    }
-  }
-
-  async skillSearch(args) {
-    const { query } = args;
-
-    if (!query) {
-      return {
-        content: [{ type: "text", text: "Error: query is required" }],
-        isError: true
-      };
-    }
-
-    try {
-      const result = await this.runCommand('hermes', ['skills', 'search', query]);
-      return {
-        content: [{ type: "text", text: result.stdout || result.stderr || "No results found" }]
-      };
-    } catch (error) {
       return {
         content: [{ type: "text", text: `Error: ${error.message}` }],
         isError: true
